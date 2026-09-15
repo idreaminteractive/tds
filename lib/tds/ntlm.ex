@@ -32,7 +32,7 @@ defmodule Tds.NTLM do
       domain: domain,
       username: username,
       password: opts[:password] || "",
-      workstation: opts[:workstation] || "HAYTERS"
+      workstation: opts[:workstation] || "WORKSTATION"
     }
   end
 
