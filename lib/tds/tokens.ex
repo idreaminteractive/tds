@@ -29,6 +29,7 @@ defmodule Tds.Tokens do
           | :error
           | :info
           | :loginack
+          | :sspi
           | :order
           | :parameters
           | :returnstatus
@@ -64,7 +65,7 @@ defmodule Tds.Tokens do
         0xAC -> decode_returnvalue(tail, collmetadata)
         0xD1 -> decode_row(tail, collmetadata)
         # 0xE4 -> decode_sessionstate(tail, collmetadata)
-        # 0xED -> decode_sspi(tail, collmetadata)
+        0xED -> decode_sspi(tail, collmetadata)
         # 0xA4 -> decode_tablename(tail, collmetadata)
         t -> raise_unsupported_token(t, collmetadata)
       end
@@ -459,6 +460,11 @@ defmodule Tds.Tokens do
   defp decode_doneinproc(<<tail::binary>>, collmetadata) do
     {{_, done}, tail, _} = decode_done(tail, collmetadata)
     {{:doneinproc, done}, tail, collmetadata}
+  end
+
+  defp decode_sspi(<<len::little-unsigned-16, rest::binary>>, collmetadata) do
+    <<sspi::binary-size(len), tail::binary>> = rest
+    {{:sspi, sspi}, tail, collmetadata}
   end
 
   defp decode_loginack(

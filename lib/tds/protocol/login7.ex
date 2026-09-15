@@ -58,12 +58,15 @@ defmodule Tds.Protocol.Login7 do
     # Hostname of the SQL server
     :hostname,
     # Database to use (defaults to user database)
-    :database
+    :database,
+    # NTLM Type1 SSPI blob (empty for SQL auth)
+    sspi: <<>>
   ]
 
   def new(opts) do
     # gethostname/0 always succeeds
     {:ok, hostname} = :inet.gethostname()
+    ntlm? = ntlm?(opts)
 
     %__MODULE__{
       tds_version: @max_supported_tds_version,
@@ -74,16 +77,21 @@ defmodule Tds.Protocol.Login7 do
       client_pid: pid!(),
       connection_id: <<0x00::size(32)>>,
       option_flags_1: @options,
-      option_flags_2: @options,
+      option_flags_2: if(ntlm?, do: <<0x80>>, else: @options),
       type_flags: @sql_type,
       option_flags_3: @options,
       client_time_zone: <<0x0, 0x0, 0x0, 0x0>>,
       client_language_code_id: @language_code_id,
-      username: opts[:username],
-      password: opts[:password],
+      username: if(ntlm?, do: "", else: opts[:username] || ""),
+      password: if(ntlm?, do: "", else: opts[:password] || ""),
       servername: opts[:hostname],
-      database: Keyword.get(opts, :database, "")
+      database: Keyword.get(opts, :database, ""),
+      sspi: if(ntlm?, do: Tds.NTLM.type1(Tds.NTLM.from_opts(opts)), else: <<>>)
     }
+  end
+
+  defp ntlm?(opts) do
+    opts[:authenticator] in [:ntlm, "ntlm"] or opts[:ntlm] == true
   end
 
   def encode(%__MODULE__{} = login) do
@@ -157,7 +165,8 @@ defmodule Tds.Protocol.Login7 do
     offsets = offsets <> <<0::ushort(), 0::ushort()>>
 
     # Database
-    variable_login = variable_login <> UCS2.from_string(login.database)
+    database_bin = UCS2.from_string(login.database)
+    variable_login = variable_login <> database_bin
 
     database =
       if login.database == "" do
@@ -167,12 +176,16 @@ defmodule Tds.Protocol.Login7 do
       end
 
     offsets = offsets <> <<current_offset::ushort(), database::ushort()>>
+    current_offset = current_offset + byte_size(database_bin)
 
     # Client ID
     offsets = offsets <> <<0::sixbyte()>>
 
-    # SSPI
-    offsets = offsets <> <<0::ushort(), 0::ushort()>>
+    # SSPI (cbSSPI is byte length, not UCS-2 char count)
+    sspi = login.sspi || <<>>
+    sspi_len = byte_size(sspi)
+    offsets = offsets <> <<current_offset::ushort(), sspi_len::ushort()>>
+    variable_login = variable_login <> sspi
 
     # Attach DB File
     offsets = offsets <> <<0::ushort(), 0::ushort()>>

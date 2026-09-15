@@ -33,7 +33,7 @@ defmodule Tds.Mixfile do
 
   defp deps do
     [
-      {:decimal, "~> 1.9 or ~> 2.0"},
+      {:decimal, "~> 1.9 or ~> 2.0 or ~> 3.0"},
       {:jason, "~> 1.0", optional: true},
       {:db_connection, "~> 2.1"},
       {:ex_doc, "~> 0.40.1", only: :dev, runtime: false, warn_if_outdated: true},

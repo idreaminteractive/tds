@@ -42,7 +42,8 @@ defmodule Tds.Protocol do
           result: nil | list(),
           query: nil | String.t(),
           transaction: transaction,
-          env: env
+          env: env,
+          sspi_challenge: nil | binary
         }
 
   defstruct sock: nil,
@@ -59,7 +60,8 @@ defmodule Tds.Protocol do
               savepoint: 0,
               collation: %Tds.Protocol.Collation{},
               packetsize: 4096
-            }
+            },
+            sspi_challenge: nil
 
   @spec connect(opts :: Keyword.t()) :: {:ok, state :: t()} | {:error, Exception.t()}
   def connect(opts) do
@@ -531,6 +533,25 @@ defmodule Tds.Protocol do
     msg = msg_login(params: opts)
 
     case login_send(msg, %{s | state: :login}) do
+      {:ok, %{sspi_challenge: challenge} = s} when is_binary(challenge) ->
+        complete_ntlm(s, challenge)
+
+      {:ok, s} ->
+        {:ok, %{s | state: :ready}}
+
+      err ->
+        err
+    end
+  end
+
+  defp complete_ntlm(%{opts: opts} = s, challenge) do
+    type3 = Tds.NTLM.type3(Tds.NTLM.from_opts(opts), challenge)
+    msg = msg_sspi(payload: type3)
+
+    case login_send(msg, %{s | sspi_challenge: nil, state: :login}) do
+      {:ok, %{sspi_challenge: next} = s} when is_binary(next) ->
+        {:disconnect, %Tds.Error{message: "unexpected extra NTLM SSPI round"}, s}
+
       {:ok, s} ->
         {:ok, %{s | state: :ready}}
 
@@ -751,6 +772,10 @@ defmodule Tds.Protocol do
     |> Keyword.put(:hostname, host)
     |> Keyword.put(:port, port)
     |> connect()
+  end
+
+  def message(:login, msg_loginack(sspi: sspi), s) when is_binary(sspi) do
+    {:ok, %{s | sspi_challenge: sspi}}
   end
 
   def message(:login, msg_loginack(), %{opts: opts} = s) do

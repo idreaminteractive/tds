@@ -15,6 +15,7 @@ defmodule Tds.Messages do
   # requests
   defrecord :msg_prelogin, [:params]
   defrecord :msg_login, [:params]
+  defrecord :msg_sspi, [:payload]
   defrecord :msg_ready, [:status]
   defrecord :msg_sql, [:query]
   defrecord :msg_transmgr, [:command, :name, :isolation_level]
@@ -23,7 +24,7 @@ defmodule Tds.Messages do
 
   # responses
   defrecord :msg_preloginack, [:response]
-  defrecord :msg_loginack, [:redirect]
+  defrecord :msg_loginack, [:redirect, :sspi]
   defrecord :msg_prepared, [:params]
   defrecord :msg_sql_result, [:columns, :rows, :row_count]
   defrecord :msg_result, [:set, :params, :status]
@@ -78,6 +79,9 @@ defmodule Tds.Messages do
 
       {:envchange, other}, {msg, s} ->
         {msg, on_envchange(other, s)}
+
+      {:sspi, sspi}, {msg, s} ->
+        {msg_loginack(msg, sspi: sspi), s}
 
       {:loginack, %{tds_version: version}}, {msg, s} ->
         Process.put(:tds_version, version)
@@ -251,6 +255,10 @@ defmodule Tds.Messages do
     opts
     |> Login7.new()
     |> Login7.encode()
+  end
+
+  defp encode(msg_sspi(payload: payload), _env) do
+    encode_packets(0x11, payload)
   end
 
   defp encode(msg_attn(), _s) do
